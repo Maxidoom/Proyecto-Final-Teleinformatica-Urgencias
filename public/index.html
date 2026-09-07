@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Urgencias — Registro de Pacientes</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ══════════ LOGIN ══════════ -->
+  <div id="login-screen" class="screen active">
+    <div class="login-box">
+      <div class="login-logo">
+        <div class="login-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+          </svg>
+        </div>
+        <h1>Hospital General</h1>
+        <p>Servicio de Urgencias</p>
+      </div>
+      <div class="login-card">
+        <div class="login-card-head">
+          <h2>Inicio de turno</h2>
+          <p>Ingresa tu nombre para comenzar a registrar pacientes.</p>
+        </div>
+        <form id="login-form">
+          <div>
+            <label class="field-label">Nombre del médico</label>
+            <div class="input-row">
+              <select id="login-titulo" class="select-titulo">
+                <option>Dr.</option>
+                <option>Dra.</option>
+              </select>
+              <input id="login-nombre" type="text" placeholder="Apellido, Nombre" autocomplete="off" />
+            </div>
+            <p class="preview-name hidden" id="login-preview">Se registrará como: <span></span></p>
+          </div>
+          <button type="submit" id="login-btn" class="btn btn-primary btn-full" disabled>Entrar al sistema</button>
+        </form>
+      </div>
+      <p class="login-date" id="login-date"></p>
+    </div>
+  </div>
+
+  <!-- ══════════ DASHBOARD ══════════ -->
+  <div id="dashboard-screen" class="screen">
+
+    <!-- Header -->
+    <header class="top-header">
+      <div class="header-brand">
+        <div class="header-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Hospital General · Urgencias</h1>
+          <p>Sistema de registro de pacientes</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="header-time">
+          <div class="label">Turno activo</div>
+          <div class="value" id="clock"></div>
+        </div>
+        <div class="header-doctor">
+          <div class="avatar" id="doctor-avatar"></div>
+          <div class="doctor-info">
+            <div class="name" id="doctor-name"></div>
+            <div class="role">Turno activo</div>
+          </div>
+          <button class="btn-logout" id="btn-logout" title="Cerrar sesión">
+            <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Stats bar -->
+    <div class="stats-bar">
+      <div class="stat-item">
+        <span class="stat-num white" id="stat-total">0</span>
+        <span class="stat-label">Pacientes activos</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num yellow" id="stat-espera">0</span>
+        <span class="stat-label">En espera</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num cyan" id="stat-atencion">0</span>
+        <span class="stat-label">En atención</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-num red" id="stat-criticos">0</span>
+        <span class="stat-label">Críticos (T1–T2)</span>
+      </div>
+      <div class="stats-actions">
+        <button class="btn btn-primary" id="btn-new-patient">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          Nuevo paciente
+        </button>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters-bar">
+      <div class="search-wrap">
+        <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input id="search-input" type="text" placeholder="Buscar paciente o folio…" />
+      </div>
+      <div class="filter-group">
+        <span class="lbl">Triage:</span>
+        <button class="filter-btn active" data-triage="0">Todos</button>
+        <button class="filter-btn" data-triage="1">T1</button>
+        <button class="filter-btn" data-triage="2">T2</button>
+        <button class="filter-btn" data-triage="3">T3</button>
+        <button class="filter-btn" data-triage="4">T4</button>
+        <button class="filter-btn" data-triage="5">T5</button>
+      </div>
+      <div class="filter-group">
+        <span class="lbl">Estado:</span>
+        <button class="filter-btn active" data-status="todos">Todos</button>
+        <button class="filter-btn" data-status="en_espera">En espera</button>
+        <button class="filter-btn" data-status="en_atencion">En atención</button>
+        <button class="filter-btn" data-status="en_observacion">En observación</button>
+      </div>
+      <span class="results-count" id="results-count"></span>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Folio</th><th>Paciente</th><th>Edad</th><th>Triage</th>
+            <th>Motivo de consulta</th><th>Ingreso</th><th>Espera</th>
+            <th>Médico</th><th>Estado</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="patients-tbody"></tbody>
+      </table>
+      <div class="empty-state hidden" id="empty-state">
+        <p>Sin resultados</p>
+        <p>Ajusta los filtros o el término de búsqueda.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════ MODAL: DETALLE PACIENTE ══════════ -->
+<div class="modal-backdrop hidden" id="detail-modal">
+  <div class="modal" id="detail-modal-box">
+    <div class="modal-header" id="detail-header">
+      <div>
+        <div class="modal-header-meta">
+          <span id="detail-triage-badge"></span>
+          <span class="mono" id="detail-folio"></span>
+          <span class="mono" style="color:var(--text3)">·</span>
+          <span class="mono" id="detail-ingreso"></span>
+        </div>
+        <div class="modal-title" id="detail-nombre"></div>
+        <div class="modal-subtitle" id="detail-info"></div>
+      </div>
+      <button class="btn-close" id="detail-close">
+        <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="modal-section-label">Motivo de consulta</div>
+        <div id="detail-motivo" style="font-size:.85rem;color:#e2e8f0;line-height:1.6;"></div>
+      </div>
+      <div>
+        <div class="modal-section-label">Signos vitales</div>
+        <div class="vitals-row" id="detail-vitals"></div>
+      </div>
+      <div class="modal-grid2">
+        <div>
+          <div class="modal-section-label">Médico asignado</div>
+          <div id="detail-doctor-view" style="font-size:.85rem;color:#e2e8f0;"></div>
+          <select id="detail-doctor-edit" class="hidden" style="margin-top:0;"></select>
+        </div>
+        <div>
+          <div class="modal-section-label">Estado</div>
+          <div id="detail-status-view"></div>
+          <select id="detail-status-edit" class="hidden" style="margin-top:0;">
+            <option value="en_espera">En espera</option>
+            <option value="en_atencion">En atención</option>
+            <option value="en_observacion">En observación</option>
+            <option value="alta">Alta médica</option>
+            <option value="transferido">Transferido</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <div class="modal-section-label">Notas clínicas</div>
+        <div id="detail-notas-view" style="font-size:.85rem;color:#cbd5e1;line-height:1.6;min-height:3rem;"></div>
+        <textarea id="detail-notas-edit" class="hidden" rows="3" placeholder="Agregar notas clínicas..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="detail-cancel-btn">Cerrar</button>
+      <button class="btn btn-subtle" id="detail-edit-btn">Editar registro</button>
+      <button class="btn btn-primary hidden" id="detail-save-btn">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ MODAL: NUEVO PACIENTE ══════════ -->
+<div class="modal-backdrop hidden" id="new-modal">
+  <div class="modal">
+    <div class="modal-header" style="border-color:var(--border)">
+      <div class="modal-title" style="font-size:1rem;">Nuevo ingreso</div>
+      <button class="btn-close" id="new-modal-close">
+        <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid2">
+        <div class="col-span-2">
+          <label class="field-label">Nombre completo</label>
+          <input id="np-nombre" type="text" placeholder="Apellido Apellido, Nombre" />
+        </div>
+        <div>
+          <label class="field-label">Edad</label>
+          <input id="np-edad" type="number" placeholder="Años" min="0" max="120" />
+        </div>
+        <div>
+          <label class="field-label">Sexo</label>
+          <select id="np-sexo">
+            <option value="M">Masculino</option>
+            <option value="F">Femenino</option>
+          </select>
+        </div>
+        <div class="col-span-2">
+          <label class="field-label">Nivel de triage</label>
+          <div class="triage-btns" id="np-triage-btns">
+            <button type="button" class="triage-btn" data-t="1">T1</button>
+            <button type="button" class="triage-btn" data-t="2">T2</button>
+            <button type="button" class="triage-btn sel-3" data-t="3">T3</button>
+            <button type="button" class="triage-btn" data-t="4">T4</button>
+            <button type="button" class="triage-btn" data-t="5">T5</button>
+          </div>
+        </div>
+        <div class="col-span-2">
+          <label class="field-label">Motivo de consulta</label>
+          <textarea id="np-motivo" rows="2" placeholder="Describe el motivo de consulta…"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="new-modal-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="new-modal-submit" disabled>Registrar paciente</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
