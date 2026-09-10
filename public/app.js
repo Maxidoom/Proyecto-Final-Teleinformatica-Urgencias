@@ -30,16 +30,6 @@ function mkPatient(id, folio, nombre, edad, sexo, triage, motivo, offsetMins, do
 }
 
 const SEED_PATIENTS = [
-  mkPatient('1','URG-2451','Carlos Mendoza Ríos',67,'M',1,'Dolor torácico irradiado a brazo izquierdo',8,'Dr. Ramírez','en_atencion','160/100',112,36.8,91,'ECG con cambios en ST. Troponinas pendientes.'),
-  mkPatient('2','URG-2452','María Torres Salinas',34,'F',2,'Convulsiones tónico-clónicas',22,'Dra. Chen','en_atencion','145/90',98,37.2,96,'Primera crisis convulsiva. Neurology en camino.'),
-  mkPatient('3','URG-2453','Roberto Gutiérrez Paz',51,'M',2,'Dificultad respiratoria severa',31,null,'en_espera','130/85',105,38.4,88,''),
-  mkPatient('4','URG-2454','Ana Lucía Flores',28,'F',3,'Dolor abdominal agudo en FID',45,'Dr. Morales','en_observacion','118/76',88,38.1,98,'Posible apendicitis. US abdominal pendiente.'),
-  mkPatient('5','URG-2455','Javier Hernández Cruz',42,'M',3,'Fractura abierta tibia derecha',55,'Dra. Ibarra','en_atencion','125/80',92,36.5,99,'Ortopedia valoró. Cirugía programada 18:30.'),
-  mkPatient('6','URG-2456','Gloria Reyes Mondragón',79,'F',2,'AVC isquémico sospechoso — hemiparesia',14,'Dr. Vega','en_atencion','180/110',76,36.9,95,'NIHSS 12. TC craneal solicitado urgente.'),
-  mkPatient('7','URG-2457','Diego Castillo Nava',19,'M',4,'Laceración profunda en mano derecha',78,null,'en_espera','120/75',72,36.6,99,''),
-  mkPatient('8','URG-2458','Patricia Jiménez Lara',55,'F',4,'Infección urinaria con fiebre',92,'Dr. Ramírez','en_observacion','122/78',82,38.9,97,'Urocultivo enviado. Antibiótico IV iniciado.'),
-  mkPatient('9','URG-2459','Luis Ángel Soto',38,'M',5,'Resfriado común',120,null,'en_espera','118/72',68,37.4,98,''),
-  mkPatient('10','URG-2460','Carmen López Vidal',63,'F',3,'Hiperglucemia — glucosa 480 mg/dL',38,'Dra. Chen','en_atencion','135/88',95,36.7,96,'Insulina IV en curso. Control glucémico cada hora.'),
 ];
 
 // ── State ─────────────────────────────────────────────────────────────────────
