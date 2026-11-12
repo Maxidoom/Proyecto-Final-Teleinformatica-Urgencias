@@ -1,11 +1,13 @@
+
 {
   "name": "proyecto-final-teleinformatica-urgencias",
   "version": "1.0.0",
   "description": "",
   "main": "urgencias.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
+  "start": "node server.js",
+  "test": "echo \"Error: no test specified\" && exit 1"
+},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Maxidoom/Proyecto-Final-Teleinformatica-Urgencias.git"
@@ -19,6 +21,7 @@
   },
   "homepage": "https://github.com/Maxidoom/Proyecto-Final-Teleinformatica-Urgencias#readme",
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "mysql2": "^3.24.6"
   }
 }

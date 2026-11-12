@@ -1,6 +1,11 @@
+/* ============================================================
+   URGENCIAS — Front-end conectado a MySQL vía API (/api/*)
+   - Login con usuario + contraseña (tabla medicos)
+   - Dar de alta / eliminar pacientes
+   - Edición de signos vitales
+   - Datos vía INNER JOIN: sala_medica + medicos + estados
+   ============================================================ */
 'use strict';
-
-// ── Data ──────────────────────────────────────────────────────────────────────
 
 const TRIAGE = {
   1: { label: 'Resucitación', cls: 't1' },
@@ -18,31 +23,63 @@ const STATUS = {
   transferido:    { label: 'Transferido' },
 };
 
-const DOCTORES_SEED = ['Dr. Ramírez','Dra. Chen','Dr. Morales','Dra. Ibarra','Dr. Vega'];
-
-let folioCounter = 2461;
-
-function mkPatient(id, folio, nombre, edad, sexo, triage, motivo, offsetMins, doctor, status, ta, fc, temp, spo2, notas) {
-  return { id, folio, nombre, edad, sexo, triage, motivoConsulta: motivo,
-    llegada: new Date(Date.now() - offsetMins * 60000),
-    doctor, status, presionArterial: ta, frecuenciaCardiaca: fc,
-    temperatura: temp, saturacion: spo2, notas };
-}
-
-const SEED_PATIENTS = [
-];
-
-// ── State ─────────────────────────────────────────────────────────────────────
-
 let state = {
-  doctor: null,
-  patients: SEED_PATIENTS.map(p => ({ ...p })),
+  doctor: null,          // nombre del médico (viene del login)
+  usuario: null,         // usuario del médico (para las FK en el servidor)
+  patients: [],
+  medicos: [],
   filterTriage: 0,
   filterStatus: 'todos',
   search: '',
   editingDetail: false,
   openPatientId: null,
 };
+
+// ── Capa de datos: API ↔ MySQL ────────────────────────────────────────────────
+
+async function api(ruta, opciones) {
+  const res = await fetch(ruta, opciones);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Error del servidor');
+  }
+  return res.json();
+}
+
+// Normaliza una fila del INNER JOIN al formato que usa la interfaz
+function normalizar(fila) {
+  const hoy = new Date();
+  const [h, m] = String(fila.hora_ingreso).slice(0, 8).split(':');
+  const llegada = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), +h, +m);
+  return {
+    id: fila.id,
+    folio: fila.folio,
+    nombre: fila.nombre,
+    edad: fila.edad,
+    sexo: fila.sexo,
+    triage: fila.triage,
+    motivoConsulta: fila.motivoConsulta,
+    llegada,
+    doctor: fila.doctor,
+    status: fila.status,
+    presionArterial: fila.ta,
+    frecuenciaCardiaca: fila.fc,
+    temperatura: parseFloat(fila.temperatura),
+    saturacion: fila.spo2,
+    notas: fila.notas || '',
+  };
+}
+
+async function cargarPacientes() {
+  const filas = await api('/api/pacientes');
+  state.patients = filas.map(normalizar);
+  render();
+}
+
+async function cargarMedicos() {
+  const filas = await api('/api/pacientes'); // el JOIN ya trae el nombre de cada médico
+  state.medicos = [...new Set(filas.map(f => f.doctor))];
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -89,6 +126,10 @@ function filtered_patients() {
       return true;
     })
     .sort((a, b) => a.triage - b.triage || a.llegada - b.llegada);
+}
+
+function findPatient(id) {
+  return state.patients.find(x => String(x.id) === String(id));
 }
 
 // ── Clock ─────────────────────────────────────────────────────────────────────
@@ -155,7 +196,7 @@ function render() {
 // ── Detail modal ──────────────────────────────────────────────────────────────
 
 function openDetail(id) {
-  const p = state.patients.find(x => x.id === id);
+  const p = findPatient(id);
   if (!p) return;
   state.openPatientId = id;
   state.editingDetail = false;
@@ -176,7 +217,7 @@ function populateDetail(p) {
   document.getElementById('detail-info').textContent = `${p.edad} años · ${p.sexo === 'M' ? 'Masculino' : 'Femenino'}`;
   document.getElementById('detail-motivo').textContent = p.motivoConsulta;
 
-  // Vitals
+  // Vitals (vista)
   const taVal = parseInt(p.presionArterial);
   document.getElementById('detail-vitals').innerHTML =
     vital_chip('TA',   p.presionArterial, 'mmHg', taVal >= 160) +
@@ -185,14 +226,18 @@ function populateDetail(p) {
     vital_chip('SpO₂', p.saturacion, '%', p.saturacion < 94) +
     vital_chip('Espera', fmtWait(p.llegada), '');
 
-  // Doctor
+  // Vitals (edición)
+  document.getElementById('detail-ta').value   = p.presionArterial === '—' ? '' : p.presionArterial;
+  document.getElementById('detail-fc').value   = p.frecuenciaCardiaca || '';
+  document.getElementById('detail-temp').value = p.temperatura || '';
+  document.getElementById('detail-spo2').value = p.saturacion || '';
+
+  // Médico
   document.getElementById('detail-doctor-view').innerHTML = p.doctor || '<em style="color:var(--text3)">Sin asignar</em>';
   const docSel = document.getElementById('detail-doctor-edit');
-  const others = DOCTORES_SEED.filter(d => d !== state.doctor);
-  docSel.innerHTML = `<option value="">Sin asignar</option>
-    <option value="${state.doctor}">${state.doctor} (tú)</option>
-    ${others.map(d => `<option value="${d}">${d}</option>`).join('')}`;
-  docSel.value = p.doctor || '';
+  docSel.innerHTML = `<option value="${state.doctor}">${state.doctor} (tú)</option>
+    ${state.medicos.filter(d => d !== state.doctor).map(d => `<option value="${d}">${d}</option>`).join('')}`;
+  docSel.value = p.doctor || state.doctor;
 
   // Status
   document.getElementById('detail-status-view').innerHTML = status_badge(p.status);
@@ -203,6 +248,11 @@ function populateDetail(p) {
     ? p.notas
     : '<em style="color:var(--text3)">Sin notas registradas</em>';
   document.getElementById('detail-notas-edit').value = p.notas;
+
+  // Botón "Dar de alta": solo si no está ya dado de alta / transferido
+  const puedeAlta = p.status !== 'alta' && p.status !== 'transferido';
+  document.getElementById('detail-alta-btn').classList.toggle('hidden', !puedeAlta);
+  document.getElementById('detail-delete-btn').classList.remove('hidden');
 }
 
 function setDetailEditMode(editing) {
@@ -211,21 +261,69 @@ function setDetailEditMode(editing) {
   const edits  = ['detail-doctor-edit','detail-status-edit','detail-notas-edit'];
   views.forEach(id => document.getElementById(id).classList.toggle('hidden', editing));
   edits.forEach(id => document.getElementById(id).classList.toggle('hidden', !editing));
+  document.getElementById('vitals-edit').classList.toggle('hidden', !editing);
+  document.getElementById('detail-vitals').classList.toggle('hidden', editing);
   document.getElementById('detail-cancel-btn').textContent = editing ? 'Cancelar' : 'Cerrar';
   document.getElementById('detail-edit-btn').classList.toggle('hidden', editing);
+  document.getElementById('detail-alta-btn').classList.toggle('hidden', editing);
+  document.getElementById('detail-delete-btn').classList.toggle('hidden', editing);
   document.getElementById('detail-save-btn').classList.toggle('hidden', !editing);
 }
 
-function saveDetail() {
-  const p = state.patients.find(x => x.id === state.openPatientId);
+// Guarda en MySQL: médico (FK), estado (FK), notas y SIGNOS VITALES
+async function saveDetail() {
+  const p = findPatient(state.openPatientId);
   if (!p) return;
-  const docVal = document.getElementById('detail-doctor-edit').value;
-  p.doctor = docVal || state.doctor;
-  p.status = document.getElementById('detail-status-edit').value;
-  p.notas  = document.getElementById('detail-notas-edit').value;
-  populateDetail(p);
-  setDetailEditMode(false);
-  render();
+  const payload = {
+    doctor: document.getElementById('detail-doctor-edit').value || state.doctor,
+    usuario: state.usuario,
+    status: document.getElementById('detail-status-edit').value,
+    notas:  document.getElementById('detail-notas-edit').value,
+    ta:   document.getElementById('detail-ta').value.trim(),
+    fc:   parseInt(document.getElementById('detail-fc').value) || 0,
+    temperatura: parseFloat(document.getElementById('detail-temp').value) || 36.5,
+    spo2: parseInt(document.getElementById('detail-spo2').value) || 98,
+  };
+  try {
+    await api('/api/pacientes/' + p.id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    await cargarPacientes();           // recarga desde la BD (JOIN actualizado)
+    populateDetail(findPatient(p.id));
+    setDetailEditMode(false);
+  } catch (e) {
+    alert('No se pudieron guardar los cambios: ' + e.message);
+  }
+}
+
+// DAR DE ALTA: cambia el estado a "alta" sin borrar el registro
+async function darDeAlta() {
+  const p = findPatient(state.openPatientId);
+  if (!p) return;
+  if (!confirm(`¿Dar de alta a ${p.nombre}?`)) return;
+  try {
+    await api('/api/pacientes/' + p.id + '/alta', { method: 'PUT' });
+    await cargarPacientes();
+    populateDetail(findPatient(p.id));
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+// ELIMINAR: borra el registro de la tabla sala_medica
+async function eliminarPaciente() {
+  const p = findPatient(state.openPatientId);
+  if (!p) return;
+  if (!confirm(`¿ELIMINAR el registro de ${p.nombre}?\nEsta acción no se puede deshacer.`)) return;
+  try {
+    await api('/api/pacientes/' + p.id, { method: 'DELETE' });
+    closeDetail();
+    await cargarPacientes();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
 }
 
 function closeDetail() {
@@ -262,92 +360,168 @@ function checkNewForm() {
   document.getElementById('new-modal-submit').disabled = !ok;
 }
 
-function submitNewPatient() {
+// Inserta en sala_medica con las FKs (médico del login, estado "en_espera")
+async function submitNewPatient() {
   const nombre = document.getElementById('np-nombre').value.trim();
   const edad   = parseInt(document.getElementById('np-edad').value);
   const sexo   = document.getElementById('np-sexo').value;
   const motivo = document.getElementById('np-motivo').value.trim();
   if (!nombre || !edad || !motivo) return;
 
-  const id    = String(Date.now());
-  const folio = 'URG-' + (folioCounter++);
-  state.patients.unshift({
-    id, folio, nombre, edad, sexo, triage: npTriage,
-    motivoConsulta: motivo, llegada: new Date(),
-    doctor: state.doctor, status: 'en_espera',
-    presionArterial: '—', frecuenciaCardiaca: 0,
-    temperatura: 36.5, saturacion: 98, notas: '',
-  });
-  closeNewPatient();
-  render();
+  try {
+    await api('/api/pacientes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nombre, edad, sexo, triage: npTriage, motivo,
+        doctor: state.doctor, usuario: state.usuario,
+      }),
+    });
+    closeNewPatient();
+    await cargarPacientes();
+    await cargarMedicos();
+  } catch (e) {
+    alert('No se pudo registrar el ingreso: ' + e.message);
+  }
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 
-function showDashboard(doctorName) {
-  state.doctor = doctorName;
+async function showDashboard(nombre, usuario) {
+  state.doctor = nombre;
+  state.usuario = usuario;
   document.getElementById('login-screen').classList.remove('active');
   document.getElementById('dashboard-screen').classList.add('active');
-  document.getElementById('doctor-name').textContent = doctorName;
-  document.getElementById('doctor-avatar').textContent = initials(doctorName);
+  document.getElementById('doctor-name').textContent = nombre;
+  document.getElementById('doctor-avatar').textContent = initials(nombre);
   tick();
-  render();
+  try {
+    await cargarMedicos();
+    await cargarPacientes();
+    setInterval(cargarPacientes, 15000);     // refresco automático silencioso
+  } catch (e) {
+    alert('No se pudo conectar con la base de datos. ¿MySQL encendido y "sala_medica.sql" importado?');
+  }
 }
 
 function logout() {
   state.doctor = null;
+  state.usuario = null;
+  state.patients = [];
   document.getElementById('dashboard-screen').classList.remove('active');
   document.getElementById('login-screen').classList.add('active');
-  document.getElementById('login-nombre').value = '';
+  document.getElementById('login-usuario').value = '';
+  document.getElementById('login-clave').value = '';
   document.getElementById('login-btn').disabled = true;
-  document.getElementById('login-preview').classList.add('hidden');
+}
+
+// ── Registro de médicos ───────────────────────────────────────────────────────
+
+function mostrarRegistro(mostrar) {
+  document.getElementById('login-head').classList.toggle('hidden', mostrar);
+  document.getElementById('login-form').classList.toggle('hidden', mostrar);
+  document.getElementById('register-head').classList.toggle('hidden', !mostrar);
+  document.getElementById('register-form').classList.toggle('hidden', !mostrar);
+  document.getElementById('reg-msg').classList.add('hidden');
 }
 
 // ── Boot & events ─────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
 
-  // Login date
   document.getElementById('login-date').textContent = fmtDate(new Date());
 
-  // Login form
-  const loginNombre = document.getElementById('login-nombre');
-  const loginTitulo = document.getElementById('login-titulo');
-  const loginBtn    = document.getElementById('login-btn');
-  const loginPreview = document.getElementById('login-preview');
+  // LOGIN con usuario + contraseña
+  const loginUsuario = document.getElementById('login-usuario');
+  const loginClave   = document.getElementById('login-clave');
+  const loginBtn     = document.getElementById('login-btn');
 
-  function updateLoginPreview() {
-    const name = loginNombre.value.trim();
-    loginBtn.disabled = !name;
-    if (name) {
-      loginPreview.classList.remove('hidden');
-      loginPreview.querySelector('span').textContent = `${loginTitulo.value} ${name}`;
-    } else {
-      loginPreview.classList.add('hidden');
+  function checkLogin() {
+    loginBtn.disabled = !(loginUsuario.value.trim() && loginClave.value.trim());
+  }
+  loginUsuario.addEventListener('input', checkLogin);
+  loginClave.addEventListener('input', checkLogin);
+
+  document.getElementById('login-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      const data = await api('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          usuario: loginUsuario.value.trim(),
+          clave:   loginClave.value,
+        }),
+      });
+      showDashboard(data.nombre, data.usuario);
+    } catch (err) {
+      alert(err.message);
     }
+  });
+
+  // REGISTRO
+  const regNombre  = document.getElementById('reg-nombre');
+  const regUsuario = document.getElementById('reg-usuario');
+  const regClave   = document.getElementById('reg-clave');
+  const regClave2  = document.getElementById('reg-clave2');
+  const regBtn     = document.getElementById('reg-btn');
+  const regMsg     = document.getElementById('reg-msg');
+
+  function checkRegistro() {
+    regBtn.disabled = !(regNombre.value.trim() && regUsuario.value.trim() &&
+                        regClave.value && regClave2.value);
+  }
+  [regNombre, regUsuario, regClave, regClave2].forEach(i => i.addEventListener('input', checkRegistro));
+
+  document.getElementById('show-register').addEventListener('click', () => mostrarRegistro(true));
+  document.getElementById('show-login').addEventListener('click', () => mostrarRegistro(false));
+
+  function regError(texto) {
+    regMsg.textContent = texto;
+    regMsg.classList.remove('hidden');
   }
 
-  loginNombre.addEventListener('input', updateLoginPreview);
-  loginTitulo.addEventListener('change', updateLoginPreview);
-
-  document.getElementById('login-form').addEventListener('submit', e => {
+  document.getElementById('register-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const name = loginNombre.value.trim();
-    if (!name) return;
-    showDashboard(`${loginTitulo.value} ${name}`);
+    if (regClave.value.length < 6) return regError('La contraseña debe tener al menos 6 caracteres');
+    if (regClave.value !== regClave2.value) return regError('Las contraseñas no coinciden');
+    regBtn.disabled = true;
+    try {
+      const data = await api('/api/registro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre:  regNombre.value.trim(),
+          usuario: regUsuario.value.trim(),
+          clave:   regClave.value,
+        }),
+      });
+      // Cuenta creada: volver al login con el usuario ya escrito
+      e.target.reset();
+      mostrarRegistro(false);
+      loginUsuario.value = data.usuario;
+      loginClave.value = '';
+      checkLogin();
+      loginClave.focus();
+      alert('Cuenta creada correctamente. Ya puedes iniciar sesión.');
+    } catch (err) {
+      regError(err.message);
+    } finally {
+      checkRegistro();
+    }
   });
 
   // Logout
   document.getElementById('btn-logout').addEventListener('click', logout);
-
-  // Stats new patient button
-  document.getElementById('btn-new-patient').addEventListener('click', openNewPatient);
 
   // Search
   document.getElementById('search-input').addEventListener('input', e => {
     state.search = e.target.value;
     renderTable();
   });
+
+  // New patient
+  document.getElementById('btn-new-patient').addEventListener('click', openNewPatient);
 
   // Triage filters
   document.querySelectorAll('[data-triage]').forEach(btn => {
@@ -386,11 +560,11 @@ document.addEventListener('DOMContentLoaded', () => {
     else closeDetail();
   });
   document.getElementById('detail-edit-btn').addEventListener('click', () => {
-    const p = state.patients.find(x => x.id === state.openPatientId);
-    if (p && !p.doctor) document.getElementById('detail-doctor-edit').value = state.doctor;
     setDetailEditMode(true);
   });
   document.getElementById('detail-save-btn').addEventListener('click', saveDetail);
+  document.getElementById('detail-alta-btn').addEventListener('click', darDeAlta);
+  document.getElementById('detail-delete-btn').addEventListener('click', eliminarPaciente);
   document.getElementById('detail-modal').addEventListener('click', e => {
     if (e.target === document.getElementById('detail-modal')) closeDetail();
   });
