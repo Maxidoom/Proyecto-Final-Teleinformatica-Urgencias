@@ -1,29 +1,30 @@
-// ============================================================
-//  URGENCIAS - Servidor Express + MySQL (usa ./conexion.js)
-//  Uso:  npm install   →   npm start   (puerto 3000)
-// ============================================================
+
 const express = require('express');
 const path = require('path');
-const crypto = require('crypto');        // para hashear claves sin instalar nada
-const conexion = require('./conexion');  // tu archivo de conexión (mysql2)
+const crypto = require('crypto');
+const conexion = require('./conexion');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Promesas sobre tu conexion mysql2
-const query = (sql, params = []) =>
-  new Promise((resolve, reject) =>
-    conexion.query(sql, params, (err, rows) => err ? reject(err) : resolve(rows)));
+// Ejecuta una consulta SQL y devuelve una promesa (para usar await)
+function query(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    conexion.query(sql, params, (err, filas) => {
+      if (err) reject(err);
+      else resolve(filas);
+    });
+  });
+}
 
-// ---------- Hash de claves (crypto.scrypt, sin dependencias nuevas) ----------
+//contraseñas
 function hashClave(clave) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(clave, salt, 64).toString('hex');
-  return `${salt}:${hash}`;
+  return salt + ':' + hash;
 }
+
 function verificarClave(clave, guardada) {
   const [salt, hash] = (guardada || '').split(':');
   if (!salt || !hash) return false;
@@ -31,152 +32,146 @@ function verificarClave(clave, guardada) {
   return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(prueba, 'hex'));
 }
 
-// ------------------------------------------------------------
-// CONSULTA RELACIONAL: INNER JOINs de sala_medica + medicos + estados
-// ------------------------------------------------------------
-const PACIENTES_JOIN = `
-  SELECT
-    s.pacient_id AS id, s.folio, s.nombre, s.edad, s.sexo,
-    s.triage, s.motivo_consulta AS motivoConsulta,
-    s.ta, s.fc, s.temperatura, s.spo2, s.notas,
-    s.hora_ingreso,
-    TIMESTAMPDIFF(MINUTE, s.hora_ingreso, CURTIME()) AS t_espera,
-    m.nombre AS doctor, m.usuario AS medicoUsuario,
-    e.codigo AS status, e.nombre AS statusNombre
-  FROM sala_medica s
-  INNER JOIN medicos m ON m.id_medico = s.id_medico   -- FK -> PK
-  INNER JOIN estados e ON e.id_estado = s.id_estado   -- FK -> PK
-  ORDER BY s.triage ASC, s.hora_ingreso ASC`;
-
-// ---------- API ----------
-
-// LOGIN: valida usuario + clave contra la tabla medicos
+//  login y registro
 app.post('/api/login', async (req, res) => {
   const { usuario, clave } = req.body;
   if (!usuario || !clave) return res.status(400).json({ error: 'Completa usuario y contraseña' });
+
   try {
-    const rows = await query('SELECT nombre, usuario, clave FROM medicos WHERE usuario = ? AND activo = 1', [usuario]);
-    const m = rows[0];
+    const filas = await query(
+      'SELECT id_medico, nombre, usuario, clave FROM medicos WHERE usuario = ? AND activo = 1', [usuario]);
+    const m = filas[0];
     if (!m || !verificarClave(clave, m.clave)) {
       return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
     }
-    res.json({ ok: true, nombre: m.nombre, usuario: m.usuario });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    res.json({ id: m.id_medico, nombre: m.nombre, usuario: m.usuario });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/api/registro', async (req, res) => {
-  const nombre  = String(req.body.nombre || '').trim();
+  const nombre = String(req.body.nombre || '').trim();
   const usuario = String(req.body.usuario || '').trim().toLowerCase();
-  const clave   = String(req.body.clave || '');
+  const clave = String(req.body.clave || '');
 
   if (!nombre || !usuario || !clave) return res.status(400).json({ error: 'Completa todos los campos' });
-  if (nombre.length > 60) return res.status(400).json({ error: 'El nombre es demasiado largo (máx. 60)' });
-  if (!/^[a-z0-9._-]{3,40}$/.test(usuario)) {
-    return res.status(400).json({ error: 'Usuario: 3 a 40 caracteres (letras, números, . _ -)' });
-  }
+  if (usuario.length < 3) return res.status(400).json({ error: 'El usuario debe tener al menos 3 caracteres' });
   if (clave.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
 
   try {
     const existe = await query('SELECT 1 FROM medicos WHERE usuario = ?', [usuario]);
-    if (existe.length) return res.status(409).json({ error: 'Ese usuario ya está en uso' });
+    if (existe.length > 0) return res.status(409).json({ error: 'Ese usuario ya está en uso' });
 
-    await query('INSERT INTO medicos (nombre, usuario, clave) VALUES (?, ?, ?)',
-                [nombre, usuario, hashClave(clave)]);
-    res.status(201).json({ ok: true, usuario });
+    await query('INSERT INTO medicos (nombre, usuario, clave) VALUES (?, ?, ?)', [nombre, usuario, hashClave(clave)]);
+    res.status(201).json({ usuario });
   } catch (e) {
-    if (e.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Ese usuario ya está en uso' });
     res.status(500).json({ error: e.message });
   }
 });
-// Cambiar clave (opcional, para el médico logueado)
-app.put('/api/medicos/clave', async (req, res) => {
-  const { usuario, claveNueva } = req.body;
-  if (!usuario || !claveNueva) return res.status(400).json({ error: 'Datos incompletos' });
+
+//medicos
+// Lista de médicos activos (para el selector del paciente)
+app.get('/api/medicos', async (req, res) => {
   try {
-    await query('UPDATE medicos SET clave = ? WHERE usuario = ?', [hashClave(claveNueva), usuario]);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    res.json(await query('SELECT id_medico, nombre FROM medicos WHERE activo = 1 ORDER BY nombre'));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// Listar pacientes (INNER JOIN)
+//pacientes
+// Revisa los datos de un paciente. Devuelve un texto de error, o null si está bien.
+function errorPaciente(d) {
+  if (!d.nombre || !d.edad || !d.motivo) return 'Nombre, edad y motivo son obligatorios';
+  if (d.triage < 1 || d.triage > 5) return 'El triage debe ser de 1 a 5';
+  if (d.sexo !== 'M' && d.sexo !== 'F') return 'Sexo no válido';
+  if (!d.id_medico) return 'Falta el médico';
+  return null;
+}
+
+// Listar pacientes (une sala_medica con medicos y estados)
 app.get('/api/pacientes', async (req, res) => {
   try {
-    res.json(await query(PACIENTES_JOIN));
+    const filas = await query(`
+      SELECT s.pacient_id AS id, s.folio, s.nombre, s.edad, s.sexo, s.triage,
+             s.motivo_consulta AS motivo, s.notas, s.hora_ingreso,
+             s.id_medico, m.nombre AS doctor,
+             e.codigo AS status, e.nombre AS statusNombre
+      FROM sala_medica s
+      INNER JOIN medicos m ON m.id_medico = s.id_medico
+      INNER JOIN estados e ON e.id_estado = s.id_estado
+      ORDER BY s.triage ASC, s.hora_ingreso ASC`);
+    res.json(filas);
   } catch (e) {
-    res.status(500).json({ error: 'Error al consultar pacientes', detalle: e.message });
+    res.status(500).json({ error: e.message });
   }
 });
 
-// Nuevo ingreso (inserta en tu tabla sala_medica con las FKs)
+// Nuevo paciente
 app.post('/api/pacientes', async (req, res) => {
-  const { nombre, edad, sexo, triage, motivo, doctor, usuario } = req.body;
-  if (!nombre || !edad || !motivo) {
-    return res.status(400).json({ error: 'Nombre, edad y motivo son obligatorios' });
-  }
+  const d = req.body;
+  const error = errorPaciente(d);
+  if (error) return res.status(400).json({ error });
+
   try {
-    // Medico responsable (FK): se busca por usuario logueado o por nombre
-    let med = await query('SELECT id_medico FROM medicos WHERE usuario = ?', [usuario || '']);
-    if (!med.length) med = await query('SELECT id_medico FROM medicos WHERE nombre = ?', [doctor || '']);
-    if (!med.length) return res.status(400).json({ error: 'Médico no encontrado. Iniciá sesión de nuevo.' });
-
-    const est = await query("SELECT id_estado FROM estados WHERE codigo = 'en_espera'");
-
+    // El folio real depende del id, así que primero se guarda uno temporal único
+    const temporal = Date.now().toString(36);
     const r = await query(
       `INSERT INTO sala_medica
-         (folio, nombre, edad, sexo, triage, motivo_consulta,
-          hora_ingreso, t_espera, id_medico, id_estado)
-       VALUES ('TMP', ?, ?, ?, ?, ?, CURTIME(), 0, ?, ?)`,
-      [nombre, edad, sexo, triage, motivo, med[0].id_medico, est[0].id_estado]);
-    const id = r.insertId;
+         (folio, nombre, edad, sexo, triage, motivo_consulta, notas, hora_ingreso, id_medico, id_estado)
+       VALUES (?, ?, ?, ?, ?, ?, ?, CURTIME(), ?, (SELECT id_estado FROM estados WHERE codigo = ?))`,
+      [temporal, d.nombre, d.edad, d.sexo, d.triage, d.motivo, d.notas || '', d.id_medico, d.status || 'en_espera']);
 
-    // Folio real a partir del PK: URG-0001, URG-0002, ...
-    await query("UPDATE sala_medica SET folio = CONCAT('URG-', LPAD(?, 4, '0')) WHERE pacient_id = ?", [id, id]);
-    res.status(201).json({ ok: true, id });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    // Folio definitivo
+    await query("UPDATE sala_medica SET folio = CONCAT('URG-', LPAD(?, 4, '0')) WHERE pacient_id = ?", [r.insertId, r.insertId]);
+    res.status(201).json({ id: r.insertId });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// Actualizar: médico (FK), estado (FK), notas Y SIGNOS VITALES
+// Editar paciente
 app.put('/api/pacientes/:id', async (req, res) => {
-  const id = req.params.id;
-  const { doctor, usuario, status, notas, ta, fc, temperatura, spo2 } = req.body;
+  const d = req.body;
+  const error = errorPaciente(d);
+  if (error) return res.status(400).json({ error });
+
   try {
-    let med = await query('SELECT id_medico FROM medicos WHERE usuario = ?', [usuario || '']);
-    if (!med.length) med = await query('SELECT id_medico FROM medicos WHERE nombre = ?', [doctor || '']);
-    if (!med.length) return res.status(400).json({ error: 'Médico no encontrado' });
-
-    const est = await query('SELECT id_estado FROM estados WHERE codigo = ?', [status]);
-
     await query(
       `UPDATE sala_medica
-       SET id_medico = ?, id_estado = ?, notas = ?,
-           ta = ?, fc = ?, temperatura = ?, spo2 = ?,
-           t_espera = TIMESTAMPDIFF(MINUTE, hora_ingreso, CURTIME())
+       SET nombre = ?, edad = ?, sexo = ?, triage = ?, motivo_consulta = ?, notas = ?,
+           id_medico = ?, id_estado = (SELECT id_estado FROM estados WHERE codigo = ?)
        WHERE pacient_id = ?`,
-      [med[0].id_medico, est[0].id_estado, notas || '',
-       ta || '—', fc || 0, temperatura || 36.5, spo2 || 98, id]);
-
+      [d.nombre, d.edad, d.sexo, d.triage, d.motivo, d.notas || '', d.id_medico, d.status, req.params.id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// DAR DE ALTA: atajo para cambiar el estado a "alta"
+// Dar de alta (solo cambia el estado)
 app.put('/api/pacientes/:id/alta', async (req, res) => {
   try {
-    const est = await query("SELECT id_estado FROM estados WHERE codigo = 'alta'");
-    await query('UPDATE sala_medica SET id_estado = ? WHERE pacient_id = ?', [est[0].id_estado, req.params.id]);
+    await query(
+      "UPDATE sala_medica SET id_estado = (SELECT id_estado FROM estados WHERE codigo = 'alta') WHERE pacient_id = ?",
+      [req.params.id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// ELIMINAR paciente del registro
+// Eliminar paciente
 app.delete('/api/pacientes/:id', async (req, res) => {
   try {
     await query('DELETE FROM sala_medica WHERE pacient_id = ?', [req.params.id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-app.listen(PORT, () => {
-  console.log(`Urgencias corriendo en http://localhost:${PORT}`);
-  console.log('  (conectado a MySQL: base "urgencias" - tabla sala_medica)');
+app.listen(3000, () => {
+  console.log('Urgencias corriendo en http://localhost:3000');
 });
