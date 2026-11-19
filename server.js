@@ -8,7 +8,7 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Ejecuta una consulta SQL y devuelve una promesa (para usar await)
+// Ejecuta consulta y devuelve promesa 
 function query(sql, params = []) {
   return new Promise((resolve, reject) => {
     conexion.query(sql, params, (err, filas) => {
@@ -71,7 +71,7 @@ app.post('/api/registro', async (req, res) => {
 });
 
 //medicos
-// Lista de médicos activos (para el selector del paciente)
+// médicos activos 
 app.get('/api/medicos', async (req, res) => {
   try {
     res.json(await query('SELECT id_medico, nombre FROM medicos WHERE activo = 1 ORDER BY nombre'));
@@ -81,7 +81,7 @@ app.get('/api/medicos', async (req, res) => {
 });
 
 //pacientes
-// Revisa los datos de un paciente. Devuelve un texto de error, o null si está bien.
+// Revisar los datos de un paciente
 function errorPaciente(d) {
   if (!d.nombre || !d.edad || !d.motivo) return 'Nombre, edad y motivo son obligatorios';
   if (d.triage < 1 || d.triage > 5) return 'El triage debe ser de 1 a 5';
@@ -90,7 +90,7 @@ function errorPaciente(d) {
   return null;
 }
 
-// Listar pacientes (une sala_medica con medicos y estados)
+// Listar pacientes
 app.get('/api/pacientes', async (req, res) => {
   try {
     const filas = await query(`
@@ -115,7 +115,7 @@ app.post('/api/pacientes', async (req, res) => {
   if (error) return res.status(400).json({ error });
 
   try {
-    // El folio real depende del id, así que primero se guarda uno temporal único
+    // guarda folio temporal 
     const temporal = Date.now().toString(36);
     const r = await query(
       `INSERT INTO sala_medica
@@ -123,7 +123,7 @@ app.post('/api/pacientes', async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, CURTIME(), ?, (SELECT id_estado FROM estados WHERE codigo = ?))`,
       [temporal, d.nombre, d.edad, d.sexo, d.triage, d.motivo, d.notas || '', d.id_medico, d.status || 'en_espera']);
 
-    // Folio definitivo
+    // folio posta
     await query("UPDATE sala_medica SET folio = CONCAT('URG-', LPAD(?, 4, '0')) WHERE pacient_id = ?", [r.insertId, r.insertId]);
     res.status(201).json({ id: r.insertId });
   } catch (e) {
@@ -150,7 +150,7 @@ app.put('/api/pacientes/:id', async (req, res) => {
   }
 });
 
-// Dar de alta (solo cambia el estado)
+// Dar de alta 
 app.put('/api/pacientes/:id/alta', async (req, res) => {
   try {
     await query(

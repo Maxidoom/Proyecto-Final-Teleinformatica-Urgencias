@@ -1,14 +1,14 @@
 
-let medico = null;        // médico que inició sesión: { id, nombre, usuario }
+let medico = null;        // médico que inició sesión
 let pacientes = [];       // lista de pacientes que llega del servidor
-let idEditando = null;    // id del paciente abierto (null = paciente nuevo)
-let triage = 3;           // nivel de triage elegido en la ventana
+let idEditando = null;    // id del paciente abierto 
+let triage = 3;           // nivel de triage 
 
 function $(id) {
   return document.getElementById(id);
 }
 
-// Muestra (si = true) u oculta (si = false) un elemento
+// Muestra u oculta un elemento
 function mostrar(id, si) {
   $(id).classList.toggle('hidden', !si);
 }
@@ -64,7 +64,7 @@ async function crearCuenta(e) {
       usuario: $('reg-usuario').value.trim(),
       clave: $('reg-clave').value,
     });
-    // vuelve al login con el usuario ya escrito
+    // vuelve al login
     $('registro-form').reset();
     verRegistro(false);
     $('login-usuario').value = datos.usuario;
@@ -115,9 +115,9 @@ async function cargarPacientes() {
   dibujar();
 }
 
-// Aplica los filtros y dibuja contadores y tabla
+// Aplica filtros dibuja contadores y tabla
 function dibujar() {
-  // Contadores (usan todos los pacientes, sin filtrar)
+  // Contadores 
   const activos = pacientes.filter(p => p.status !== 'alta' && p.status !== 'transferido');
   $('stat-total').textContent = activos.length;
   $('stat-espera').textContent = pacientes.filter(p => p.status === 'en_espera').length;
@@ -155,7 +155,7 @@ function dibujar() {
   $('tabla').innerHTML = filas;
 }
 
-// Ventana de paciente (sirve para nuevo y para editar) 
+// Ventana de paciente
 function elegirTriage(n) {
   triage = n;
   for (const boton of document.querySelectorAll('#p-triage .triage-btn')) {
@@ -164,9 +164,9 @@ function elegirTriage(n) {
   }
 }
 
-// 
+
 function abrirModal(id) {
-  const p = pacientes.find(x => x.id === id);   // undefined si es nuevo
+  const p = pacientes.find(x => x.id === id);   
   idEditando = p ? p.id : null;
 
   $('modal-titulo').textContent = p ? 'Editar paciente · ' + p.folio : 'Nuevo ingreso';
@@ -179,7 +179,7 @@ function abrirModal(id) {
   $('p-estado').value = p ? p.status : 'en_espera';
   elegirTriage(p ? p.triage : 3);
 
-  // "Eliminar" y "Dar de alta" solo existen al editar
+  // eliminar y dar de alta solo existen al editar
   mostrar('btn-eliminar', !!p);
   mostrar('btn-alta', !!p && p.status !== 'alta');
   mostrar('modal', true);
